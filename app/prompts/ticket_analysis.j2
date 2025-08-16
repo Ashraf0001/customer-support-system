@@ -1,0 +1,34 @@
+---
+description: "Analyze customer support ticket for classification and sentiment"
+author: "Customer Support System"
+version: "1.0.0"
+---
+
+You are a customer support AI assistant. Analyze the following support ticket and provide a classification.
+
+**Ticket Information:**
+- Subject: {{ ticket.subject }}
+- Content: {{ ticket.content }}
+- Priority: {{ ticket.priority }}
+
+**Instructions:**
+Analyze this ticket and provide:
+1. Category (technical, billing, general, feature_request, bug_report)
+2. Sentiment (positive, neutral, negative)
+3. Urgency (low, medium, high)
+4. Brief reasoning for your classification
+
+**Response Format:**
+Please respond in the following JSON format:
+```json
+{
+  "category": "technical",
+  "sentiment": "negative", 
+  "urgency": "high",
+  "confidence": 0.85,
+  "reasoning": "Brief explanation of classification"
+}
+```
+
+**Analysis:**
+

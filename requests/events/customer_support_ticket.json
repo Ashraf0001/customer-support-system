@@ -1,0 +1,12 @@
+{
+  "id": "ticket_12345",
+  "customer_email": "customer@example.com",
+  "subject": "Login issues with my account",
+  "content": "I'm unable to log into my account. I keep getting an error message saying 'Invalid credentials' even though I'm sure my password is correct. I've tried resetting my password twice but the issue persists. This is preventing me from accessing my important work files.",
+  "priority": "high"
+}
+
+
+
+
+

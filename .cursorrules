@@ -1,0 +1,819 @@
+# Cursor Rules for GenAI Launchpad - Customer Support System
+
+## 🚀 Project Overview
+This is a GenAI Launchpad project for building a customer support system using event-driven architecture, AI workflows, and modern Python tooling.
+
+## 📦 Package Management with UV
+- **Always use UV** for package management - this project uses UV exclusively
+- **UV manages virtual environments automatically** - no need to manually create venvs
+- **Install dependencies**: `uv add <package-name>`
+- **Install dev dependencies**: `uv add --dev <package-name>`
+- **Update dependencies**: `uv sync`
+- **Run scripts**: `uv run <script-name>`
+- **Activate environment**: `uv shell` (if needed for debugging)
+- **Lock file**: Always commit `uv.lock` to version control
+
+## 🏗️ Project Structure
+```
+app/
+├── api/                    # FastAPI endpoints and routers
+├── core/                   # Core workflow and node components
+│   ├── nodes/             # Workflow node implementations
+│   ├── commands/          # CLI commands
+│   └── schema.py          # Workflow schema definitions
+├── database/              # Database models and utilities
+├── prompts/               # AI prompt templates
+├── schemas/               # Pydantic event schemas
+├── services/              # Business logic services
+├── workflows/             # Workflow definitions
+│   └── customer_support/  # Customer support specific workflows
+└── worker/                # Celery background tasks
+```
+
+## 🎯 Customer Support System Focus - Lightweight MVP
+- **Primary workflow**: Ticket Analysis → Simple Classification → Response Generation
+- **Key nodes**: AnalyzeTicketNode, ClassifyTicketNode, GenerateResponseNode
+- **Event schemas**: SupportTicketSchema, SimpleClassificationSchema, ResponseSchema
+- **AI integration**: Basic intent classification, simple response generation
+- **MVP scope**: 3-4 nodes max, simple routing, basic response generation
+
+## 📝 Code Standards
+
+### Python & Type Hints
+- **Use type hints everywhere** - no exceptions
+- **Use Pydantic models** for all data validation
+- **Follow PEP 8** with 88-character line limit
+- **Use dataclasses** for simple data structures
+- **Use enums** for constants and status values
+
+### Workflow & Node Patterns
+```python
+# Node implementation pattern
+class AnalyzeTicketNode(Node):
+    def process(self, task_context: TaskContext) -> TaskContext:
+        # Process logic here
+        task_context.nodes[self.node_name] = {
+            "status": "completed",
+            "result": result_data
+        }
+        return task_context
+
+# Workflow schema pattern
+class CustomerSupportWorkflow(Workflow):
+    workflow_schema = WorkflowSchema(
+        description="Customer support ticket processing workflow",
+        event_schema=SupportTicketSchema,
+        start=AnalyzeTicketNode,
+        nodes=[
+            NodeConfig(
+                node=AnalyzeTicketNode,
+                connections=[ClassifyTicketNode],
+                description="Analyzes incoming support tickets"
+            ),
+            # ... more nodes
+        ]
+    )
+```
+
+### Error Handling
+- **Always handle exceptions** in nodes with proper logging
+- **Use custom exceptions** for business logic errors
+- **Implement retry logic** for external API calls
+- **Log errors with context** for debugging
+
+### Logging
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Use structured logging
+logger.info("Processing ticket", extra={
+    "ticket_id": ticket_id,
+    "node": self.node_name,
+    "status": "started"
+})
+```
+
+## 🤖 AI Integration Guidelines - Open Source LLM Focus
+
+### LLM Choice for MVP
+- **Primary LLM**: Ollama with Llama 3.1 8B (lightweight, local, free)
+- **Alternative**: Mistral 7B or Phi-3 Mini for even lighter weight
+- **No cloud dependencies** - everything runs locally
+- **Use Ollama API** for simple integration
+
+### Prompt Management
+- **Store prompts in `app/prompts/`** using Jinja2 templates
+- **Use the prompt_loader service** for template management
+- **Keep prompts simple** - avoid complex reasoning chains for MVP
+- **Test prompts** in the playground before deployment
+
+### AI Provider Integration
+- **Use Ollama exclusively** for MVP - no cloud APIs
+- **Simple HTTP requests** to local Ollama instance
+- **Basic error handling** - retry on connection failures
+- **No caching needed** for MVP - responses are fast enough locally
+
+### Example AI Node Pattern (Ollama)
+```python
+import requests
+import json
+from typing import Dict, Any
+
+class GenerateResponseNode(Node):
+    def process(self, task_context: TaskContext) -> TaskContext:
+        # Simple Ollama API call
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3.1:8b",
+                "prompt": self._build_prompt(task_context),
+                "stream": False
+            }
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            task_context.nodes[self.node_name] = {
+                "status": "completed",
+                "response": result["response"]
+            }
+        else:
+            task_context.nodes[self.node_name] = {
+                "status": "error",
+                "error": "Failed to generate response"
+            }
+        
+        return task_context
+    
+    def _build_prompt(self, task_context: TaskContext) -> str:
+        # Simple prompt building - no complex templating for MVP
+        ticket = task_context.event
+        return f"Customer support ticket: {ticket.subject}\n\nContent: {ticket.content}\n\nGenerate a helpful response:"
+```
+
+### Ollama Setup Requirements
+- **Install Ollama**: Follow official docs for your OS
+- **Pull model**: `ollama pull llama3.1:8b`
+- **Start service**: `ollama serve` (runs on localhost:11434)
+- **Environment variable**: `OLLAMA_BASE_URL=http://localhost:11434`
+
+## 🗄️ Database Guidelines
+
+### Models & Migrations
+- **Use Alembic** for all database migrations
+- **Follow naming conventions**: snake_case for tables, PascalCase for models
+- **Use the repository pattern** for data access
+- **Implement proper indexes** for performance
+
+### Example Model Pattern - Lightweight MVP
+```python
+from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    
+    id = Column(String, primary_key=True)
+    customer_email = Column(String, nullable=False)  # Simple identifier
+    subject = Column(String, nullable=False)
+    content = Column(Text, nullable=False)  # Use Text for longer content
+    status = Column(String, default="open")  # open, processing, resolved
+    category = Column(String, nullable=True)  # Simple classification
+    ai_response = Column(Text, nullable=True)  # Store AI-generated response
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Keep it simple - no complex metadata for MVP
+```
+
+## 🧪 Testing Strategy
+
+### Unit Testing
+- **Test individual nodes** in isolation
+- **Mock external dependencies** (AI APIs, databases)
+- **Use pytest** with fixtures
+- **Test error scenarios** and edge cases
+
+### Integration Testing
+- **Use the playground** for workflow testing
+- **Test end-to-end workflows** with real data
+- **Validate event schemas** and data flow
+- **Test async processing** with Celery
+
+### Example Test Pattern - Lightweight MVP
+```python
+import pytest
+from unittest.mock import Mock, patch
+
+class TestAnalyzeTicketNode:
+    def test_process_valid_ticket(self):
+        node = AnalyzeTicketNode()
+        context = TaskContext(event=valid_ticket_data)
+        
+        with patch('requests.post') as mock_requests:
+            mock_requests.return_value.status_code = 200
+            mock_requests.return_value.json.return_value = {"response": "Test response"}
+            result = node.process(context)
+            
+        assert result.nodes[node.node_name]["status"] == "completed"
+    
+    def test_process_ollama_failure(self):
+        node = AnalyzeTicketNode()
+        context = TaskContext(event=valid_ticket_data)
+        
+        with patch('requests.post') as mock_requests:
+            mock_requests.return_value.status_code = 500
+            result = node.process(context)
+            
+        assert result.nodes[node.node_name]["status"] == "error"
+```
+
+## 🚀 Development Workflow - Lightweight MVP
+
+### Local Development Setup
+1. **Install Ollama**: `curl -fsSL https://ollama.ai/install.sh | sh`
+2. **Pull LLM model**: `ollama pull llama3.1:8b`
+3. **Start Ollama**: `ollama serve` (in background)
+4. **Start services**: `docker-compose up -d`
+5. **Run migrations**: `uv run alembic upgrade head`
+6. **Start API**: `uv run uvicorn app.main:app --reload`
+7. **Start worker**: `uv run celery -A app.worker.config.celery_app worker --loglevel=info`
+8. **Test workflows**: Use the playground scripts
+
+### MVP Development Phases
+- **Phase 1** (Week 1): Basic ticket submission and storage
+- **Phase 2** (Week 2): Simple AI analysis and response generation
+- **Phase 3** (Week 3): Basic classification and testing
+- **Keep it simple** - avoid complex features for MVP
+
+### Code Quality
+- **Use ruff** for linting (already configured)
+- **Run type checking**: `uv run pyright`
+- **Format code**: `uv run ruff format`
+- **Check imports**: `uv run ruff check --fix`
+
+### Git & GitHub Workflow
+
+#### Branch Strategy
+- **Main branch**: `main` - production-ready code only
+- **Feature branches**: `feature/ticket-analysis`, `feature/ai-response`
+- **Bug fixes**: `fix/ollama-connection`, `fix/database-migration`
+- **Hotfixes**: `hotfix/critical-bug` for urgent production fixes
+- **Branch naming**: Use descriptive names with prefixes
+
+#### Commit Messages - Conventional Commits
+```bash
+# Format: <type>(<scope>): <description>
+feat(api): add ticket submission endpoint
+fix(ai): resolve ollama connection timeout
+docs(readme): update setup instructions
+test(nodes): add unit tests for AnalyzeTicketNode
+refactor(workflow): simplify customer support workflow
+style(schemas): format pydantic models
+chore(deps): update uv.lock with new dependencies
+```
+
+#### Pull Request Guidelines
+- **Title**: Clear, descriptive title
+- **Description**: What, why, and how the change works
+- **Testing**: How to test the changes
+- **Screenshots**: For UI changes (if applicable)
+- **Checklist**: Self-review checklist
+- **Linked issues**: Reference related issues/tickets
+
+#### PR Template Example
+```markdown
+## Description
+Brief description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
+- [ ] Ollama integration tested
+
+## Checklist
+- [ ] Code follows project standards
+- [ ] Self-review completed
+- [ ] Documentation updated
+- [ ] No breaking changes (or documented)
+```
+
+#### Git Hooks & Pre-commit
+- **Pre-commit hooks**: Run linting and tests before commit
+- **Commit message validation**: Ensure conventional commit format
+- **Branch protection**: Require PR reviews for main branch
+- **Status checks**: Require tests to pass before merge
+
+#### Repository Management
+- **Issues**: Use GitHub issues for feature requests and bugs
+- **Projects**: Use GitHub Projects for MVP roadmap tracking
+- **Milestones**: Group issues by development phases
+- **Labels**: Use labels for issue categorization (bug, enhancement, documentation)
+
+#### GitHub Actions & CI/CD
+- **Automated testing**: Run tests on every PR
+- **Code quality**: Run linting and type checking
+- **Security scanning**: Check for vulnerabilities
+- **Dependency updates**: Automated security updates
+- **Deployment**: Auto-deploy to staging/production
+
+#### GitHub Tools Integration
+- **Dependabot**: Automated dependency updates
+- **CodeQL**: Security vulnerability scanning
+- **GitHub Copilot**: AI-assisted coding (if available)
+- **GitHub CLI**: Command-line GitHub operations
+- **GitHub Desktop**: GUI for Git operations (optional)
+
+#### Issue Templates
+- **Bug report template**: Structured bug reporting
+- **Feature request template**: Standardized feature requests
+- **MVP milestone tracking**: Group issues by development phases
+
+## 🔧 Environment & Configuration
+
+### Environment Variables
+- **Use .env files** for local development
+- **Never commit secrets** to version control
+- **Use environment-specific configs** for different deployments
+- **Validate environment** on startup
+
+### Required Environment Variables - Lightweight MVP
+```bash
+# Database
+DATABASE_HOST=localhost
+DATABASE_NAME=genai_launchpad
+DATABASE_USER=postgres
+DATABASE_PASSWORD=your_password
+DATABASE_PORT=5432
+
+# Ollama (Local LLM)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Project
+PROJECT_NAME=customer_support_system
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRY=3600
+
+# Optional: For future cloud LLM integration
+# OPENAI_API_KEY=your_openai_key
+# ANTHROPIC_API_KEY=your_anthropic_key
+```
+
+## 📊 Monitoring & Observability
+
+### Logging
+- **Structured logging** with correlation IDs
+- **Log levels**: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- **Include context** in all log messages
+- **Use log aggregation** in production
+
+### Metrics
+- **Track workflow execution times**
+- **Monitor AI API usage and costs**
+- **Alert on error rates**
+- **Track business metrics** (ticket resolution time, customer satisfaction)
+
+## 🚀 Deployment Guidelines
+
+### Docker
+- **Use multi-stage builds** for production images
+- **Optimize layer caching** for faster builds
+- **Include health checks** in containers
+- **Use secrets management** for sensitive data
+
+### Production Checklist
+- [ ] Environment variables configured
+- [ ] Database migrations applied
+- [ ] AI API keys validated
+- [ ] Monitoring and alerting set up
+- [ ] Backup strategy implemented
+- [ ] Security audit completed
+- [ ] Performance testing done
+
+## 🎯 Customer Support Specific Rules
+
+### Ticket Processing
+- **Always validate** incoming ticket data
+- **Implement priority scoring** based on urgency and customer tier
+- **Route to appropriate** support agents or automated responses
+- **Track SLA compliance** for response times
+
+### AI Response Generation
+- **Maintain brand voice** in automated responses
+- **Include escalation options** when AI can't help
+- **Validate responses** before sending to customers
+- **Learn from feedback** to improve responses
+
+### Data Privacy
+- **Anonymize sensitive data** in logs
+- **Implement data retention** policies
+- **Comply with GDPR** and other privacy regulations
+- **Secure customer data** at rest and in transit
+
+## 🔄 Continuous Improvement
+
+### Code Reviews
+- **Review for security** vulnerabilities
+- **Check performance** implications
+- **Validate error handling** strategies
+- **Ensure test coverage** is adequate
+
+### Documentation with MkDocs
+
+#### Documentation Setup
+- **Use MkDocs with Material theme** for beautiful, responsive docs
+- **Follow Pydantic/OpenAPI style** - clean, code-focused documentation
+- **Auto-generate API docs** from FastAPI endpoints
+- **Include code examples** for all workflows and nodes
+- **Version documentation** with each release
+
+#### MkDocs Configuration
+```yaml
+# mkdocs.yml
+site_name: Customer Support System
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [app]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+            show_signature_annotations: true
+            show_bases: true
+            heading_level: 2
+            members_order: source
+            docstring_style: google
+            preload_modules: true
+  - mkdocs-jupyter:
+      include_source: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - API Reference:
+    - Endpoints: api/endpoints.md
+    - Schemas: api/schemas.md
+    - Workflows: api/workflows.md
+  - Development:
+    - Architecture: development/architecture.md
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+  - Deployment:
+    - Local Setup: deployment/local.md
+    - Production: deployment/production.md
+    - Troubleshooting: deployment/troubleshooting.md
+```
+
+#### Documentation Structure
+```
+docs/
+├── index.md                    # Homepage with overview
+├── getting-started/
+│   ├── installation.md         # Setup instructions
+│   ├── quickstart.md          # 5-minute tutorial
+│   └── configuration.md       # Environment setup
+├── api/
+│   ├── endpoints.md           # API documentation
+│   ├── schemas.md             # Pydantic models
+│   └── workflows.md           # Workflow documentation
+├── development/
+│   ├── architecture.md        # System architecture
+│   ├── contributing.md        # Development guidelines
+│   └── testing.md             # Testing strategies
+├── deployment/
+│   ├── local.md               # Local development
+│   ├── production.md          # Production deployment
+│   └── troubleshooting.md     # Common issues
+└── assets/                    # Images, diagrams, etc.
+```
+
+#### Documentation Standards
+
+##### Code Documentation
+```python
+class AnalyzeTicketNode(Node):
+    """Analyzes incoming support tickets for intent and sentiment.
+    
+    This node processes customer support tickets to extract key information
+    such as intent classification, sentiment analysis, and priority scoring.
+    
+    Attributes:
+        model_name: The Ollama model to use for analysis
+        
+    Example:
+        ```python
+        node = AnalyzeTicketNode()
+        context = TaskContext(event=ticket_data)
+        result = node.process(context)
+        ```
+    """
+    
+    def process(self, task_context: TaskContext) -> TaskContext:
+        """Process the ticket analysis workflow.
+        
+        Args:
+            task_context: The task context containing the ticket data
+            
+        Returns:
+            Updated TaskContext with analysis results
+            
+        Raises:
+            OllamaConnectionError: If unable to connect to Ollama service
+            InvalidTicketDataError: If ticket data is malformed
+        """
+        # Implementation here
+```
+
+##### Workflow Documentation
+```markdown
+# Customer Support Workflow
+
+## Overview
+The customer support workflow processes incoming tickets through a series of AI-powered analysis and response generation steps.
+
+## Workflow Steps
+
+### 1. Ticket Analysis
+**Node**: `AnalyzeTicketNode`  
+**Purpose**: Extract intent, sentiment, and priority from ticket content  
+**Input**: Raw ticket data  
+**Output**: Analysis results with classification
+
+### 2. Classification
+**Node**: `ClassifyTicketNode`  
+**Purpose**: Categorize ticket into predefined categories  
+**Input**: Analysis results  
+**Output**: Ticket category and routing decision
+
+### 3. Response Generation
+**Node**: `GenerateResponseNode`  
+**Purpose**: Generate appropriate response based on classification  
+**Input**: Classified ticket data  
+**Output**: AI-generated response
+
+## Configuration
+```yaml
+workflow:
+  name: customer_support
+  version: 1.0.0
+  nodes:
+    - analyze_ticket
+    - classify_ticket
+    - generate_response
+```
+
+## Example Usage
+```python
+from workflows.customer_support import CustomerSupportWorkflow
+
+workflow = CustomerSupportWorkflow()
+result = workflow.run(ticket_data)
+```
+```
+
+#### Documentation Workflow
+- **Write docs alongside code** - document as you develop
+- **Update on every change** - keep docs in sync with code
+- **Include examples** - show real usage patterns
+- **Add diagrams** - visualize workflows and architecture
+- **Version control** - track documentation changes
+
+#### MkDocs Commands
+```bash
+# Install MkDocs
+uv add --dev mkdocs mkdocs-material mkdocstrings[python] mkdocs-jupyter
+
+# Serve documentation locally
+uv run mkdocs serve
+
+# Build documentation
+uv run mkdocs build
+
+# Deploy to GitHub Pages
+uv run mkdocs gh-deploy
+
+# Check documentation
+uv run mkdocs build --strict
+```
+
+#### Documentation Quality Checklist
+- [ ] All public APIs documented
+- [ ] Code examples included
+- [ ] Workflow diagrams added
+- [ ] Installation instructions clear
+- [ ] Configuration examples provided
+- [ ] Troubleshooting section complete
+- [ ] API reference auto-generated
+- [ ] Search functionality working
+- [ ] Mobile-responsive design
+- [ ] Dark/light mode support
+
+## 🎯 Lightweight MVP Constraints
+
+### Keep It Simple
+- **Max 3-4 workflow nodes** - avoid complex routing
+- **Simple prompts** - no complex reasoning chains
+- **Basic classification** - 3-5 categories max
+- **No complex integrations** - focus on core functionality
+- **Local LLM only** - no cloud dependencies
+
+### MVP Success Criteria
+- [ ] Submit ticket via API
+- [ ] Store ticket in database
+- [ ] Analyze ticket with local LLM
+- [ ] Generate basic response
+- [ ] Return response to user
+- [ ] Basic error handling
+
+### Future Enhancements (Post-MVP)
+- Advanced routing logic
+- Agent assignment
+- SLA tracking
+- Analytics dashboard
+- Cloud LLM integration
+- Complex integrations
+
+## 🔧 Troubleshooting & Common Issues
+
+### Ollama Issues
+- **Model not found**: Run `ollama pull llama3.1:8b`
+- **Service not running**: Start with `ollama serve`
+- **Port conflicts**: Check if port 11434 is available
+- **Memory issues**: Use smaller model like `phi3:mini` if needed
+
+### Database Issues
+- **Connection errors**: Check Docker containers are running
+- **Migration failures**: Run `uv run alembic upgrade head`
+- **Data persistence**: Check Docker volumes are mounted
+
+### Development Issues
+- **Import errors**: Ensure you're in the correct directory
+- **UV issues**: Run `uv sync` to sync dependencies
+- **Docker issues**: Restart containers with `docker-compose restart`
+
+## 📋 Quick Start Checklist
+
+### Pre-Development Setup
+- [ ] Install Ollama and pull model
+- [ ] Set up environment variables
+- [ ] Start Docker containers
+- [ ] Run database migrations
+- [ ] Test Ollama connection
+
+### Development Workflow
+- [ ] Create feature branch
+- [ ] Implement node/feature
+- [ ] Add tests
+- [ ] Test in playground
+- [ ] Update documentation
+- [ ] Create PR
+
+### MVP Validation
+- [ ] Submit test ticket via API
+- [ ] Verify database storage
+- [ ] Check AI processing
+- [ ] Validate response generation
+- [ ] Test error scenarios
+
+## 🎯 Performance & Optimization Guidelines
+
+### MVP Performance Targets
+- **API response time**: < 500ms for ticket submission
+- **AI processing time**: < 10 seconds for response generation
+- **Database queries**: < 100ms for simple operations
+- **Memory usage**: < 2GB for local development
+- **Startup time**: < 30 seconds for all services
+
+### Optimization Strategies
+- **Database indexing** on frequently queried fields
+- **Connection pooling** for database connections
+- **Simple caching** for repeated AI prompts
+- **Async processing** for non-blocking operations
+- **Resource monitoring** during development
+
+## 🔒 Security Best Practices
+
+### Data Protection
+- **Input validation** on all API endpoints
+- **SQL injection prevention** using ORM
+- **Rate limiting** on API endpoints
+- **Environment variable** protection
+- **No secrets in code** - use .env files
+
+### MVP Security Checklist
+- [ ] Input sanitization implemented
+- [ ] Environment variables secured
+- [ ] Database connections encrypted
+- [ ] API rate limiting configured
+- [ ] Error messages don't leak sensitive data
+
+## 📈 Monitoring & Debugging
+
+### Development Monitoring
+- **Structured logging** with correlation IDs
+- **Request/response logging** for debugging
+- **Performance metrics** tracking
+- **Error tracking** with context
+- **Health check endpoints**
+
+### Debugging Tools
+- **FastAPI debug mode** for development
+- **Database query logging** for optimization
+- **Celery task monitoring** for background jobs
+- **Ollama response logging** for AI debugging
+- **Memory profiling** for performance issues
+
+## 🚀 Deployment & DevOps
+
+### Local Development
+- **Docker Compose** for service orchestration
+- **Volume mounting** for code hot-reload
+- **Environment isolation** with .env files
+- **Service health checks** for dependencies
+- **Log aggregation** for debugging
+
+### Production Readiness
+- **Environment-specific configs** (dev/staging/prod)
+- **Health check endpoints** for monitoring
+- **Graceful shutdown** handling
+- **Backup strategies** for database
+- **Rollback procedures** for deployments
+
+## 🎯 MVP Success Metrics
+
+### Technical Metrics
+- **Uptime**: > 99% during development
+- **Error rate**: < 1% for successful operations
+- **Response time**: < 2 seconds for end-to-end processing
+- **Test coverage**: > 80% for critical paths
+- **Documentation coverage**: 100% for public APIs
+
+### Business Metrics
+- **Ticket processing success**: > 95%
+- **AI response quality**: > 80% helpful responses
+- **User satisfaction**: Measured through feedback
+- **System reliability**: No data loss or corruption
+- **Development velocity**: Features delivered on schedule
+
+## 🔄 Iteration & Feedback Loop
+
+### Development Iteration
+- **Weekly reviews** of progress and blockers
+- **User feedback** collection and integration
+- **Performance monitoring** and optimization
+- **Code quality** improvements
+- **Documentation updates** with each change
+
+### MVP Evolution Plan
+- **Phase 1**: Core functionality (3 weeks)
+- **Phase 2**: Quality improvements (2 weeks)
+- **Phase 3**: User feedback integration (1 week)
+- **Phase 4**: Production readiness (2 weeks)
+
+Remember: This is a lightweight MVP. Focus on getting a working system quickly, not building production features. You can always enhance it later.

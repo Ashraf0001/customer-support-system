@@ -1,0 +1,73 @@
+site_name: Customer Support System
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]  # add project root to sys.path so 'app' package is importable
+          options:
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+            show_signature_annotations: true
+            show_bases: true
+            heading_level: 2
+            members_order: source
+            docstring_style: google
+  - mkdocs-jupyter:
+      include_source: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      fallback_to_build_date: true
+      enable_git_follow: false
+      enabled: false
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+    - User Guide: getting-started/user-guide.md
+  - API Reference:
+    - Endpoints: api/endpoints.md
+    - Schemas: api/schemas.md
+    - Workflows: api/workflows.md
+  - Development:
+    - Architecture: development/architecture.md
+    - Developer Guide: development/developer-guide.md
+    - Code Walkthrough: development/code-walkthrough.md
+    - Database: development/database.md
+    - AI & Ollama: development/ai-ollama.md
+    - Glossary: development/glossary.md
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+  - Deployment:
+    - Local Setup: deployment/local.md
+    - Production: deployment/production.md
+    - Troubleshooting: deployment/troubleshooting.md
+
